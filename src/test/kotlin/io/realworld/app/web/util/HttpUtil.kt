@@ -1,5 +1,6 @@
 package io.realworld.app.web.util
 
+import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.mashape.unirest.http.HttpResponse
 import com.mashape.unirest.http.ObjectMapper
@@ -14,13 +15,15 @@ class HttpUtil(port: Int) {
     val headers = mutableMapOf("Accept" to json, "Content-Type" to json)
 
     init {
+        val mapper = jacksonObjectMapper()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
         Unirest.setObjectMapper(object : ObjectMapper {
             override fun <T> readValue(value: String, valueType: Class<T>): T {
-                return jacksonObjectMapper().readValue(value, valueType)
+                return mapper.readValue(value, valueType)
             }
 
             override fun writeValue(value: Any): String {
-                return jacksonObjectMapper().writeValueAsString(value)
+                return mapper.writeValueAsString(value)
             }
         })
     }
@@ -46,15 +49,21 @@ class HttpUtil(port: Int) {
     fun delete(path: String) =
         Unirest.delete(origin + path).headers(headers).asString()
 
+    fun getStatus(path: String): Int =
+        Unirest.get(origin + path).headers(headers).asString().status
+
+    fun postStatus(path: String, body: Any): Int =
+        Unirest.post(origin + path).headers(headers).body(body).asString().status
+
     fun loginAndSetTokenHeader(email: String, password: String) {
         val userDTO = UserDTO(User(email = email, password = password))
-        val response = post<UserDTO>("/users/login", userDTO)
+        val response = post<UserDTO>("/api/users/login", userDTO)
         headers["Authorization"] = "Token ${response.body.user?.token}"
     }
 
     fun registerUser(email: String, password: String, username: String): UserDTO {
         val userDTO = UserDTO(User(email = email, password = password, username = username))
-        val response = post<UserDTO>("/users", userDTO)
+        val response = post<UserDTO>("/api/users", userDTO)
         return response.body
     }
 

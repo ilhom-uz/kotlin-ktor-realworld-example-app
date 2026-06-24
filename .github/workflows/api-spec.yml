@@ -1,0 +1,68 @@
+name: API Spec (RealWorld)
+
+# Bonus: boots the built server and runs the official RealWorld Postman/newman
+# collection against it. This is informational — the app doesn't yet meet 100% of
+# the spec (e.g. timestamps are epoch millis rather than ISO-8601), so the newman
+# step is allowed to fail without failing the workflow.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+permissions:
+  contents: read
+
+jobs:
+  api-spec:
+    name: RealWorld API spec
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Produces build/install/api/bin/api (rootProject.name = "api").
+      - name: Build runnable distribution
+        run: ./gradlew installDist
+
+      - name: Start server
+        run: |
+          nohup ./build/install/api/bin/api > server.log 2>&1 &
+          echo "Started server (pid $!)"
+
+      - name: Wait for server to be ready
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8080/api/tags > /dev/null; then
+              echo "Server is up after ${i} attempt(s)."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Server did not become ready in time"
+          exit 1
+
+      - name: Run RealWorld API spec (newman)
+        continue-on-error: true
+        run: APIURL=http://localhost:8080/api ./spec-api/run-api-tests.sh
+
+      - name: Show server log
+        if: always()
+        run: cat server.log || true

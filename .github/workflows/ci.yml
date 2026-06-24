@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+# Least-privilege defaults; the test-report step needs to write checks/PR annotations.
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  build:
+    name: Build & Test (JDK ${{ matrix.java }})
+    runs-on: ubuntu-latest
+    strategy:
+      # Don't cancel the JDK 21 job if JDK 17 fails (or vice versa) — we want both results.
+      fail-fast: false
+      matrix:
+        java: [ '17', '21' ]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+
+      # Caches Gradle dependencies and the Gradle user home between runs.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and test
+        run: ./gradlew build
+
+      # Publishes JUnit results as a check run with inline annotations.
+      # Runs on success and failure so failing tests still surface in the PR.
+      - name: Publish test report
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          report_paths: '**/build/test-results/test/TEST-*.xml'
+          check_name: 'Test report (JDK ${{ matrix.java }})'
+          include_passed: true
+          detailed_summary: true
+
+      # Keeps the full HTML report available for download on every run.
+      - name: Upload test report artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-report-jdk-${{ matrix.java }}
+          path: build/reports/tests/test/
+          if-no-files-found: ignore
