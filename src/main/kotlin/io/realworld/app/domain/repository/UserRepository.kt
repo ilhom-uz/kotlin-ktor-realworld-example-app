@@ -97,6 +97,13 @@ class UserRepository {
         return findByEmail(user.email)
     }
 
+    fun findFollowedUserIds(followerId: Long): List<Long> {
+        return transaction {
+            Follows.select { Follows.follower eq followerId }
+                .map { it[Follows.user] }
+        }
+    }
+
     fun findIsFollowUser(email: String, userIdToFollow: Long): Boolean {
         return transaction {
             Users.join(Follows, JoinType.INNER,
